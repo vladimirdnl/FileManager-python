@@ -4,7 +4,7 @@ from tkinter import Menu, ttk
 from PIL import Image, ImageTk
 from ctypes import windll
 #import from the local folder
-from tools import DPI_aware, fill_content
+from tools import DPI_aware, fill_content, update_content
 
 #set dpi awareness according to the variable
 if DPI_aware:   
@@ -30,7 +30,10 @@ class App(tk.Tk):
         y = (h_scr/2) - (h_wind/2)
         #self.maxsize(max_w, max_h)
         self.geometry('%dx%d+%d+%d' % (w_wind, h_wind, x, y))
-        self.minsize(w_wind, 450)
+        min_height = 450
+        if not DPI_aware:
+            min_height = round(min_height/1.5)
+        self.minsize(round(w_wind), min_height)
         self.title("File Manager")
 
 class AppMenu(tk.Menu):

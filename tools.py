@@ -1,3 +1,5 @@
+from operator import iconcat
+from struct import pack
 import tkinter as tk
 from tkinter import ttk
 import os
@@ -7,6 +9,72 @@ from pathlib import Path
 
 #DPI aware setting
 DPI_aware = True
+
+class RenamePopup(tk.Toplevel):
+    icon_path = 'icons/icons8-app-icon-240.png'
+    new_name = ""
+    is_correct=False
+    def __init__(self, master=None, old_name="",  type="folder"):
+        super().__init__(master)
+        self.parent = master
+        self.type = type
+        self.old_name = old_name
+        png = Image.open(self.icon_path)
+        self.icon = ImageTk.PhotoImage(png)
+        self.grab_set()
+        self.title("Rename")
+        self.tk.call('wm', 'iconphoto', self._w, self.icon)
+        w_popup = 400
+        h_popup = 150
+        #set padding on x axis
+        padding_lr = [10,10]
+        #set paddin on y axis
+        padding_ud = [5,0]
+        if not DPI_aware:
+            w_popup /= 1.5
+            h_popup /= 1.5
+            padding_lr = [x / 1.5 for x in padding_lr]
+            padding_ud = [x / 1.5 for x in padding_ud]
+        w_scr = self.winfo_screenwidth()
+        h_scr = self.winfo_screenheight()
+        x = (w_scr/2) - (w_popup/2)
+        y = (h_scr/2) - (h_popup/2)
+        self.geometry("%dx%d+%d+%d" % (w_popup, h_popup, x, y))
+        self.resizable(False, False)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+        self.label = ttk.Label(self, text = "Enter a New Name:")
+        self.label.grid(column=0, row=0, columnspan=2, sticky='ew',\
+             padx=tuple(padding_lr), pady=tuple(padding_ud))
+        self.entry = ttk.Entry(self)
+        self.entry.grid(column=0, row=1, columnspan=2, sticky = 'ew', \
+            padx=tuple(padding_lr), pady= tuple(padding_ud))
+        self.error_msg = ttk.Label(self, text= "", foreground="red")
+        self.error_msg.grid(column=0, row =2, columnspan=2)
+        self.button_ok = ttk.Button(self, text="OK", command=self.check)
+        self.button_ok.grid(column=0,row=3, sticky = 'ew', \
+            padx=(padding_lr[0], 0), pady=tuple(padding_ud))
+        self.button_cancel = ttk.Button(self, text="Cancel", command=self.destroy)
+        self.button_cancel.grid(column=1,row=3, sticky = 'ew', \
+            padx=(0, padding_lr[1]), pady=tuple(padding_ud))
+
+    def check(self):
+        self.is_correct = True
+        if self.type == "folder":
+            unallowed_s = '/\:;"<>|*'
+        name = self.entry.get()
+        for s in name:
+            if s in unallowed_s:
+                self.is_correct = False
+                break
+
+        if not self.is_correct:
+            self.error_msg.config(text = "Not a valid name!")
+        else: 
+            self.new_name = name
+            os.rename(self.old_name, str(Path(self.old_name).parent)+ "\\" + self.new_name)
+            self.destroy()
+            update_content(self.parent, str(Path(self.old_name).parent), stay=True)
 
 #class for button for folders
 class FolderButton:
@@ -37,6 +105,32 @@ class FolderButton:
         self.abs_path = os.path.abspath(path)
         #create parent variable and assign it to master
         self.parent = master
+        #go to method initialise_popup
+        self.initialise_popup()
+
+    def initialise_popup(self):
+        self.popup = tk.Menu(self.button, tearoff=False)
+        self.popup.add_command(label = "Open Folder", command=self.open)
+        if self.abs_path.split('\\')[1] != "":
+            self.popup.add_command(label = "Rename Folder", command = self.rename)
+            self.popup.add_separator()
+            self.popup.add_command(label = "Paste to Folder")
+            self.popup.add_command(label = "Copy Folder")
+            self.popup.add_command(label = "Cut Folder")
+        self.button.bind("<Button-3>", self.instance_popup)
+    
+    def instance_popup(self, event):
+        self.popup.tk_popup(event.x_root, event.y_root)
+
+    def open(self):
+        print("Folder opened")
+        update_content(self.parent, self.abs_path)
+
+    def rename(self):
+        global rename_pop
+        rename_pop = RenamePopup(self.parent, self.abs_path)
+
+
         
     #function if folder button is clicked
     def clicked(self):
@@ -58,6 +152,23 @@ class FileButton(FolderButton):
         #call the parent class init method
         super().__init__(master, path, button)
 
+    def initialise_popup(self):
+        if self.abs_path.split('\\')[1] != "":
+            self.popup = tk.Menu(self.button, tearoff=False)
+            self.popup.add_command(label = "Open File", command=self.open)
+            self.popup.add_command(label = "Rename File")
+            self.popup.add_separator()
+            self.popup.add_command(label = "Copy File")
+            self.popup.add_command(label = "Cut File")
+            self.button.bind("<Button-3>", self.instance_popup)
+    
+    def instance_popup(self, event):
+        self.popup.tk_popup(event.x_root, event.y_root)
+    
+    def open(self):
+        print("File opened")
+        os.startfile(self.abs_path)
+
     #rewrite the function clicked
     def clicked(self):
         #print in console
@@ -75,6 +186,14 @@ class ParFolderButton(FolderButton):
         super().__init__(master, path, button)
         #rewrite absolute path to path
         self.abs_path = path
+
+    def initialise_popup(self):
+        self.popup = tk.Menu(self.button, tearoff=False)
+        self.popup.add_command(label = "Open Folder", command=self.open)
+        self.button.bind("<Button-3>", self.instance_popup)
+    
+    def instance_popup(self, event):
+        self.popup.tk_popup(event.x_root, event.y_root)
 
     #rewrite the function clicked
     def clicked(self):
@@ -193,7 +312,7 @@ def fill_content(parent, path):
     return [available_drives, current_folders, current_files]
 
 #function to update content of the working screen
-def update_content(parent, path):
+def update_content(parent, path, stay = False):
     #for refreshing global variables
     global drives, folders, files
     #firstly, destroy all the widgets on the working screen
@@ -201,9 +320,11 @@ def update_content(parent, path):
         widget.destroy()
     
     #then, get the canvas and assure the scroll is on top
-    grandparent_name = parent.winfo_parent()
-    grandparent = parent._nametowidget(grandparent_name)
-    grandparent.yview_moveto(0.0)
+    # if stay isn't specified
+    if not stay:
+        grandparent_name = parent.winfo_parent()
+        grandparent = parent._nametowidget(grandparent_name)
+        grandparent.yview_moveto(0.0)
 
     #fill content with new path passed, refresh global variables
     drives, folders, files = fill_content(parent, path)
