@@ -1,15 +1,12 @@
-from genericpath import isdir
-from operator import is_
-import os
-from pathlib import Path
-from turtle import bgcolor, onclick
-from PIL import Image, ImageTk
-import os, string
+#import py libraries
 import tkinter as tk
-from tkinter import CENTER, Button, Label, Tk, ttk
+from tkinter import Menu, ttk
+from PIL import Image, ImageTk
 from ctypes import windll
+#import from the local folder
+from tools import DPI_aware, fill_content
 
-DPI_aware = True
+#set dpi awareness according to the variable
 if DPI_aware:   
     windll.shcore.SetProcessDpiAwareness(1)
 
@@ -33,166 +30,102 @@ class App(tk.Tk):
         y = (h_scr/2) - (h_wind/2)
         #self.maxsize(max_w, max_h)
         self.geometry('%dx%d+%d+%d' % (w_wind, h_wind, x, y))
+        self.minsize(w_wind, 450)
         self.title("File Manager")
 
-class FolderButton:
-    img_size = [60,60]
-    icon_path = "icons/icons8-folder-480.png"
-    def __init__(self, master=None, path="", button=None):
-        if not DPI_aware:
-            self.img_size=[round(x / 1.5) for x in self.img_size]
-        img = (Image.open(self.icon_path))
-        resized_image= img.resize(tuple(self.img_size))
-        self.image_bg= ImageTk.PhotoImage(resized_image)
-
-        self.button = button
-        self.button.configure(image = self.image_bg, command = self.clicked)
-
-        self.name = Path(path).name
-        self.abs_path = os.path.abspath(path)
+class AppMenu(tk.Menu):
+    def __init__(self, master=None):
+        super().__init__(master)
         self.parent = master
-        
+        self.filemenu = tk.Menu(self, tearoff = False)
+        self.add_cascade(label="    File    ", menu=self.filemenu)
+        self.filemenu.add_command(label="Create File")
+        self.filemenu.add_separator()
+        self.filemenu.add_command(label= "Exit", command=self.parent.quit)
 
-    def clicked(self):
-        print("Folder clicked")
-        print(f"Folder Path: {self.abs_path}")
-        print(f"Folder Name: {self.name}\n")
-        update_content(self.parent, self.abs_path)
-
-class FileButton(FolderButton):
-    def __init__(self, master, path, button):
-        self.icon_path = "icons/icons8-blank-file-100.png"
-        self.extension = Path(path).suffix
-        super().__init__(master, path, button)
-
-    def clicked(self):
-        print("File clicked")
-        print(f"File Name: {self.name}")
-        print(f"File Extension: {self.extension}\n")
-
-class ParFolderButton(FolderButton):
-    def __init__(self, master, path, button):
-        self.icon_path="icons/icons8-parent-folder-480.png"
-        super().__init__(master, path, button)
-        self.abs_path = path
-
-    def clicked(self):
-        print("Parent Folder clicked")
-        print(f"Path of parent folder: {self.abs_path}\n")
-        update_content(self.parent, self.abs_path)
-
-def fill_content(parent, path):
-    print(f'Current path is "{path}"')
-    padding_lr = [10,10]
-    padding_ud = [5,0]
-    font_size = 12
-    l_font = "Courier New"
-    if not DPI_aware:
-            padding_lr=[x / 1.5 for x in padding_lr]
-            padding_ud=[x / 1.5 for x in padding_ud]
-    available_drives = ['%s:' % d for d in string.ascii_uppercase if os.path.exists('%s:' % d)]
-    current_folders = {}
-    current_files = {}
-    if path == "":
-        print(f"List of drives available: {available_drives}\n")
-        for row, drive in enumerate(available_drives):
-            button = ttk.Button(parent)
-            button.grid(row = row, column = 0, padx = tuple(padding_lr), pady = tuple(padding_ud))
-            current_folders[f"folder{row}"] = FolderButton(parent, drive+'\\', button)
-            label = ttk.Label(parent, text = drive, font = (l_font, font_size))
-            label.grid(row = row, column=1, sticky='w')
-    else:
-        par_butt = ttk.Button(parent)
-        par_butt.grid(row=0, column=0, padx = tuple(padding_lr), pady = tuple(padding_ud))
-        par_path = str(Path(path).parent)
-        if par_path == path:
-            par_path = ""
-        current_folders["parent_folder"] = ParFolderButton(parent, par_path, par_butt)
-        ttk.Label(parent, text='...', font = (l_font, font_size)).grid(row=0, column=1,\
-                                                             sticky='w', padx=(padding_lr[0], 0))
-
-        dir_list = [x for x in Path(path).iterdir() if not x.name.startswith(".")]
-        print("Content of the folder:")
-        row = 0
-        for instance in dir_list:
-            print(instance)
-            if instance.is_dir():
-                button = ttk.Button(parent)
-                button.grid(row = row+1, column = 0, padx = tuple(padding_lr), pady = tuple(padding_ud))
-                current_folders[f"folder{row+1}"] = FolderButton(parent, str(instance), button)
-                label = ttk.Label(parent, text = instance.name, font = (l_font, font_size))
-                label.grid(row=row+1, column = 1, sticky = 'w', padx=(padding_lr[0], 0))
-                row+=1
-            
-        for instance in dir_list:
-            print(instance)
-            if instance.is_file():
-                button = ttk.Button(parent)
-                button.grid(row = row+1, column = 0, padx = tuple(padding_lr), pady = tuple(padding_ud))
-                current_files[f"file{row+1}"] = FileButton(parent, str(instance), button)
-                label = ttk.Label(parent, text = instance.name, font = (l_font, font_size))
-                label.grid(row=row+1, column = 1, sticky = 'w', padx=(padding_lr[0], 0))
-                row+=1
-        print("")
+        self.openmenu = tk.Menu(self, tearoff=False)
+        self.add_cascade(label = "    Open    ", menu = self.openmenu)
+        self.openmenu.add_command(label="Open Path")
 
 
-    return [available_drives, current_folders, current_files]
-
-def update_content(parent, path):
-    for widget in parent.winfo_children():
-        widget.destroy()
-    grandparent_name = parent.winfo_parent()
-    grandparent = parent._nametowidget(grandparent_name)
-    grandparent.yview_moveto(0.0)
-    _, folders, files = fill_content(parent, path)
-
+#function to return the image for the application
 def get_app_icon(path):
     png = Image.open(path)
     ico = ImageTk.PhotoImage(png)
     return ico
 
+#* The main part of the program
 if __name__ == '__main__':
+    #create global variables, which resemble
+    # available drives, current folders and current files
     global drives, folders, files
+    #set the path for application icon
     app_iconpath = 'icons/icons8-app-icon-240.png' 
+    #set the start path of the application
     start_path = ""
+    
+    #create the instance of application (class App)
     fm_app = App()
+    #set the iconphoto by the function get_app_icon
+    # which opens image then returns it
     fm_app.wm_iconphoto(False, get_app_icon(app_iconpath))
-
+    fm_menu = AppMenu(fm_app)
+    fm_app.config(menu = fm_menu)
+    #create the main frame of the app
     frame_main = ttk.Frame(fm_app)
+    #make it fill both X and Y, and expand with the window
     frame_main.pack(fill=tk.BOTH, expand=1)
 
-    # Create a frame for the canvas with non-zero row&column weights
+    #create a canvas, which can be scrolled
     canvas = tk.Canvas(frame_main)
+    #pack it to the left side, so that scrollbar could be
+    # packed to the right side, make it also fill both X and Y,
+    # and expand proportionally to the window
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
 
-    # Link a scrollbar to the canvas
+    #create custom view function, which allows to
+    # prevent scrollbar from scrolling when
+    # everything on canvas is visible
     def custom_yview(*args):
         if canvas.yview() == (0.0, 1.0):
             return
         canvas.yview(*args)
-    scroll_bar = ttk.Scrollbar(frame_main, orient="vertical", command=custom_yview)
-    scroll_bar.pack(side=tk.RIGHT, fill=tk.Y)
-    canvas.configure(yscrollcommand=scroll_bar.set)
-    #canvas.bind('<Configure>', lambda e: canvas.configure(scrollregion = canvas.bbox("all")))
 
+    #create a vertical scrollbar, whi has custom_yview as a command
+    scroll_bar = ttk.Scrollbar(frame_main, orient="vertical", command=custom_yview)
+    #pack it to the right side and make it fill Y
+    scroll_bar.pack(side=tk.RIGHT, fill=tk.Y)
+    #connect canvas and scrollbar
+    canvas.configure(yscrollcommand=scroll_bar.set)
+
+    #create our working screen which has canvas as a parent
     working_screen = ttk.Frame(canvas)
+    #create a window of working screen inside the canvas
     canvas_frame = canvas.create_window((0, 0), window=working_screen, anchor='nw')
 
+    #function to control the width of the working screen
     def FrameWidth(event):
         canvas.itemconfig(canvas_frame, width=event.width)
 
+    #function to control the scrollregion of canvas
     def OnFrameConfigure(event):
         canvas.configure(scrollregion=canvas.bbox("all"))
 
+    #function to bind mouse wheel and to control scrolling
     def OnMousewheel(event):
         if canvas.yview() == (0.0, 1.0):
             return
         canvas.yview_scroll(round(-1*(event.delta/120)), "units")
 
+    #bind mouse wheel
     canvas.bind_all("<MouseWheel>", OnMousewheel)
+    #bind definition of scroll region
     working_screen.bind("<Configure>", OnFrameConfigure)
+    #bind frame width change
     canvas.bind('<Configure>', FrameWidth)
 
+    #assign global variables to return values of fill content
     drives, folders, files = fill_content(working_screen, start_path)
 
+    #start the main loop of the app
     fm_app.mainloop()
