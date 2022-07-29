@@ -1,17 +1,66 @@
+from genericpath import isfile
 from operator import iconcat
 from struct import pack
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import os
 import string
 from PIL import Image, ImageTk
 from pathlib import Path
+import shutil
+from distutils.dir_util import copy_tree
 
 #DPI aware setting
-DPI_aware = True
+DPI_aware = False
+
+global drives, folders, files, curr_path, copy_buff, cut
+cut = False
+curr_path = ""
+copy_buff = ""
+
+class rclickMenu(tk.Menu):
+    def __init__(self, master=None, master_type = "frame", frame=None):
+        super().__init__(master, tearoff=False)
+        self.parent = master
+        self.parent_type = master_type
+        self.frame = frame
+        self.parent.bind("<Button-3>", self.make_menu_visible)
+        self.add_command(label = "Create a File")
+        self.add_command(label = "Create a Folder")
+        self.add_separator()
+        self.add_command(label = "Paste here", command=self.paste_here)
+
+
+    def paste_here(self):
+        global copy_buff, curr_path, cut
+        if copy_buff != "":
+            if not cut:
+                if Path(copy_buff).is_dir():
+                    try:
+                        os.mkdir(curr_path + '\\' + str(Path(copy_buff).name))
+                        copy_tree(copy_buff, curr_path + '\\' + str(Path(copy_buff).name))
+                        copy_buff = ""
+                    except FileExistsError:
+                        messagebox.showinfo(title="Copying Directory", message="The directory with such name exists")
+                else:
+                    shutil.copy2(copy_buff, curr_path)
+                    copy_buff = ""
+            else:
+                shutil.move(copy_buff, curr_path)
+                cut = False
+                copy_buff=""
+
+            if self.parent_type == "canvas":
+                update_content(self.frame, curr_path, stay=True)
+            else:
+                update_content(self.parent, curr_path, stay=True)
+
+    def make_menu_visible(self, event):
+        self.tk_popup(event.x_root, event.y_root)
+
 
 class RenamePopup(tk.Toplevel):
-    icon_path = 'icons/icons8-app-icon-240.png'
+    icon_path = 'icons/icons8-rename-80.png'
     new_name = ""
     is_correct=False
     def __init__(self, master=None, old_name="",  type="folder"):
@@ -49,6 +98,10 @@ class RenamePopup(tk.Toplevel):
         self.entry = ttk.Entry(self)
         self.entry.grid(column=0, row=1, columnspan=2, sticky = 'ew', \
             padx=tuple(padding_lr), pady= tuple(padding_ud))
+        if self.type == "file":
+            self.extension = str(Path(self.old_name).suffix)
+            self.ext_label = ttk.Label(self, text = self.extension)
+            self.ext_label.grid(column = 3, row = 1, sticky = 'ew', padx =(0, padding_lr[1]))
         self.error_msg = ttk.Label(self, text= "", foreground="red")
         self.error_msg.grid(column=0, row =2, columnspan=2)
         self.button_ok = ttk.Button(self, text="OK", command=self.check)
@@ -58,21 +111,39 @@ class RenamePopup(tk.Toplevel):
         self.button_cancel.grid(column=1,row=3, sticky = 'ew', \
             padx=(0, padding_lr[1]), pady=tuple(padding_ud))
 
+        dir_list = Path(self.old_name).parent.iterdir()
+        self.dir_list = [str(x) for x in dir_list]
+
     def check(self):
         self.is_correct = True
-        if self.type == "folder":
-            unallowed_s = '/\:;"<>|*'
-        name = self.entry.get()
+        unallowed_s = '/\:;"<>|*'
+        if self.type == "file":
+            name = self.entry.get() + self.extension
+        else:
+            name = self.entry.get()
         for s in name:
             if s in unallowed_s:
                 self.is_correct = False
+                self.error_msg.config(text = "Don't use: / \ : ; \" < > | *")
                 break
-
-        if not self.is_correct:
-            self.error_msg.config(text = "Not a valid name!")
-        else: 
+        for ins_name in self.dir_list:
+            ins_is_dir = Path(ins_name).is_dir()
+            thesame_folder = self.type == "folder" and ins_is_dir
+            thesame_file = self.type == "file" and not ins_is_dir
+            thesame = thesame_folder or thesame_file
+            if ins_name.endswith(name) and thesame:
+                self.is_correct = False
+                if self.type == "folder":
+                    self.error_msg.config(text = "Folder with such name already exists!")
+                if self.type == "file":
+                    self.error_msg.config(text = "File with such name already exists!")
+                break
+        if self.is_correct:
             self.new_name = name
-            os.rename(self.old_name, str(Path(self.old_name).parent)+ "\\" + self.new_name)
+            if self.type == "folder":
+                os.rename(self.old_name, str(Path(self.old_name).parent)+ "\\" + self.new_name)
+            elif self.type == "file":
+                os.rename(self.old_name,str(Path(self.old_name).parent)+"\\"+self.new_name)
             self.destroy()
             update_content(self.parent, str(Path(self.old_name).parent), stay=True)
 
@@ -114,9 +185,10 @@ class FolderButton:
         if self.abs_path.split('\\')[1] != "":
             self.popup.add_command(label = "Rename Folder", command = self.rename)
             self.popup.add_separator()
-            self.popup.add_command(label = "Paste to Folder")
-            self.popup.add_command(label = "Copy Folder")
-            self.popup.add_command(label = "Cut Folder")
+            self.popup.add_command(label = "Copy Folder", command=self.copy)
+            self.popup.add_command(label = "Cut Folder", command = self.cut)
+            self.popup.add_separator()
+            self.popup.add_command(label = "Delete Folder", command=self.delete)
         self.button.bind("<Button-3>", self.instance_popup)
     
     def instance_popup(self, event):
@@ -127,15 +199,31 @@ class FolderButton:
         update_content(self.parent, self.abs_path)
 
     def rename(self):
+        print("Folder is being renamed")
         global rename_pop
-        rename_pop = RenamePopup(self.parent, self.abs_path)
+        rename_pop = RenamePopup(self.parent, self.abs_path, "folder")
 
+    def copy(self):
+        print(f"{self.abs_path} is being copied")
+        global copy_buff
+        copy_buff = self.abs_path
+    
+    def cut(self):
+        print(f"{self.abs_path} is being cut")
+        global copy_buff, cut
+        copy_buff = self.abs_path
+        cut = True
 
+    def delete(self):
+        if Path(self.abs_path).is_dir():
+            shutil.rmtree(self.abs_path)
+        else: 
+            os.remove(self.abs_path)
+        update_content(self.parent, curr_path, True)
         
     #function if folder button is clicked
     def clicked(self):
         #print for console:
-        print("Folder clicked")
         print(f"Folder Path: {self.abs_path}")
         print(f"Folder Name: {self.name}\n")
         #update the content of the parent frame with the self path
@@ -156,10 +244,12 @@ class FileButton(FolderButton):
         if self.abs_path.split('\\')[1] != "":
             self.popup = tk.Menu(self.button, tearoff=False)
             self.popup.add_command(label = "Open File", command=self.open)
-            self.popup.add_command(label = "Rename File")
+            self.popup.add_command(label = "Rename File", command=self.rename)
             self.popup.add_separator()
-            self.popup.add_command(label = "Copy File")
-            self.popup.add_command(label = "Cut File")
+            self.popup.add_command(label = "Copy File", command = self.copy)
+            self.popup.add_command(label = "Cut File", command = self.cut)
+            self.popup.add_separator()
+            self.popup.add_command(label = "Delete File", command=self.delete)
             self.button.bind("<Button-3>", self.instance_popup)
     
     def instance_popup(self, event):
@@ -168,6 +258,11 @@ class FileButton(FolderButton):
     def open(self):
         print("File opened")
         os.startfile(self.abs_path)
+    
+    def rename(self):
+        print("File is being renamed")
+        global rename_pop
+        rename_pop = RenamePopup(self.parent, self.abs_path, "file")
 
     #rewrite the function clicked
     def clicked(self):
@@ -175,6 +270,7 @@ class FileButton(FolderButton):
         print("File clicked")
         print(f"File Name: {self.name}")
         print(f"File Extension: {self.extension}\n")
+        self.open()
 
 #class for the parent folder button, which is a child to folderbutton
 class ParFolderButton(FolderButton):
@@ -205,6 +301,8 @@ class ParFolderButton(FolderButton):
 
 #filling content inside forking frame with folders and files
 def fill_content(parent, path):
+    global curr_path
+    curr_path = path
     #print current path in the console
     print(f'Current path is "{path}"')
     #set padding on x axis
@@ -246,6 +344,7 @@ def fill_content(parent, path):
     
     #if the path isn't empty, meaning there're not only drives
     else:
+        paste_menu_parent = rclickMenu(parent)
         #create a parrent button folder
         par_butt = ttk.Button(parent)
         #place it in the top left corner
@@ -314,7 +413,7 @@ def fill_content(parent, path):
 #function to update content of the working screen
 def update_content(parent, path, stay = False):
     #for refreshing global variables
-    global drives, folders, files
+    global drives, folders, files, curr_path
     #firstly, destroy all the widgets on the working screen
     for widget in parent.winfo_children():
         widget.destroy()
@@ -325,15 +424,25 @@ def update_content(parent, path, stay = False):
         grandparent_name = parent.winfo_parent()
         grandparent = parent._nametowidget(grandparent_name)
         grandparent.yview_moveto(0.0)
+        if path != "":
+            paste_menu_canvas = rclickMenu(grandparent, "canvas", parent)
 
     #fill content with new path passed, refresh global variables
+    curr_path = path
     drives, folders, files = fill_content(parent, path)
 
-def create_file(parent, path):
-    pass
+def save_settings(DPI_awareness):
+    with open("settings", "wb") as file:
+        DPI_b = DPI_awareness.to_bytes(1, "little")
+        file.write(DPI_b)
+        file.close()
 
-def create_folder(parent, path):
-    pass
-
-def open_path(parent):
-    pass
+def load_settings():
+    if os.path.isfile("settings"):
+        if os.stat("settings").st_size != 0:
+            with open("settings", "rb") as file:
+                DPI_b = file.read(1)
+                DPI_awareness = bool.from_bytes(DPI_b, "little")
+                file.close()
+                return DPI_awareness
+    return "load error"

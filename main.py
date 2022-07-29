@@ -1,23 +1,29 @@
 #import py libraries
 import tkinter as tk
-from tkinter import Menu, ttk
+from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 from ctypes import windll
 #import from the local folder
-from tools import DPI_aware, fill_content, update_content
+import tools
+import sys
+tools_mod = sys.modules["tools"]
 
+loaded = tools.load_settings()
+if loaded != "load error":
+    tools_mod.DPI_aware = loaded
 #set dpi awareness according to the variable
-if DPI_aware:   
+if tools_mod.DPI_aware:   
     windll.shcore.SetProcessDpiAwareness(1)
 
 class App(tk.Tk):
-    def __init__(self):
+    def __init__(self, current_path=""):
         super().__init__()
+        self.current_path = current_path
         w_wind = 800 
         h_wind = 650
         max_w = 1000
         max_h = 800
-        if not DPI_aware:
+        if not tools_mod.DPI_aware:
             w_wind/=1.5
             h_wind/=1.5
             max_w/=1.5
@@ -31,7 +37,7 @@ class App(tk.Tk):
         #self.maxsize(max_w, max_h)
         self.geometry('%dx%d+%d+%d' % (w_wind, h_wind, x, y))
         min_height = 450
-        if not DPI_aware:
+        if not tools_mod.DPI_aware:
             min_height = round(min_height/1.5)
         self.minsize(round(w_wind), min_height)
         self.title("File Manager")
@@ -42,13 +48,30 @@ class AppMenu(tk.Menu):
         self.parent = master
         self.filemenu = tk.Menu(self, tearoff = False)
         self.add_cascade(label="    File    ", menu=self.filemenu)
-        self.filemenu.add_command(label="Create File")
+        self.var = tk.IntVar(value = 0)
+        if tools_mod.DPI_aware:
+            print("yey")
+            self.var = tk.IntVar(value = 1)
+           
+        self.filemenu.add_checkbutton(label="DPI Scaling", variable=self.var, command=self.oncheck)
+            
+        print(tools_mod.DPI_aware)
         self.filemenu.add_separator()
         self.filemenu.add_command(label= "Exit", command=self.parent.quit)
 
         self.openmenu = tk.Menu(self, tearoff=False)
         self.add_cascade(label = "    Open    ", menu = self.openmenu)
         self.openmenu.add_command(label="Open Path")
+    
+    def oncheck(self):
+        print("DPI Checked")
+        messagebox.showinfo(title="Settings", \
+            message="For the settings to change, you may restart the application")
+        if tools_mod.DPI_aware:
+            tools_mod.DPI_aware = False
+        else:
+            tools_mod.DPI_aware = True
+
 
 
 #function to return the image for the application
@@ -57,11 +80,11 @@ def get_app_icon(path):
     ico = ImageTk.PhotoImage(png)
     return ico
 
+    
 #* The main part of the program
 if __name__ == '__main__':
     #create global variables, which resemble
     # available drives, current folders and current files
-    global drives, folders, files
     #set the path for application icon
     app_iconpath = 'icons/icons8-app-icon-240.png' 
     #set the start path of the application
@@ -104,12 +127,19 @@ if __name__ == '__main__':
     #create our working screen which has canvas as a parent
     working_screen = ttk.Frame(canvas)
     #create a window of working screen inside the canvas
-    canvas_frame = canvas.create_window((0, 0), window=working_screen, anchor='nw')
+    canvas_frame = canvas.create_window((0, 0), window=working_screen, anchor='nw', tags= ["canv_frame"])
+     
+    # w_screen_pastePopup = tk.Menu(canvas, tearoff=False)
+    # w_screen_pastePopup.add_command(label = "Paste here", command=paste_here)
+
+    # def rclick_popup(event):
+    #     print("popup assigned!")
+    #     w_screen_pastePopup.tk_popup(event.x_root, event.y_root)
+    # canvas.bind("<Button-3>", rclick_popup)
 
     #function to control the width of the working screen
     def FrameWidth(event):
         canvas.itemconfig(canvas_frame, width=event.width)
-
     #function to control the scrollregion of canvas
     def OnFrameConfigure(event):
         canvas.configure(scrollregion=canvas.bbox("all"))
@@ -127,8 +157,9 @@ if __name__ == '__main__':
     #bind frame width change
     canvas.bind('<Configure>', FrameWidth)
 
-    #assign global variables to return values of fill content
-    drives, folders, files = fill_content(working_screen, start_path)
-
+    #assign global variables from other module to return values of fill content
+    tools_mod.drives, tools_mod.folders, tools_mod.files = tools_mod.fill_content(working_screen, start_path)
     #start the main loop of the app
     fm_app.mainloop()
+    print(f"DPI_aware on exit: {tools_mod.DPI_aware}")
+    tools_mod.save_settings(tools_mod.DPI_aware)
