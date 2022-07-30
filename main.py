@@ -5,73 +5,104 @@ from PIL import Image, ImageTk
 from ctypes import windll
 #import from the local folder
 import tools
+#widen the default scope
 import sys
 tools_mod = sys.modules["tools"]
 
+#load DPI settings 
 loaded = tools.load_settings()
 if loaded != "load error":
     tools_mod.DPI_aware = loaded
+#print DPI Scaling state
+print(f"DPI Scaling: {tools_mod.DPI_aware}")
 #set dpi awareness according to the variable
 if tools_mod.DPI_aware:   
     windll.shcore.SetProcessDpiAwareness(1)
 
+#main application class
 class App(tk.Tk):
-    def __init__(self, current_path=""):
+    #initialization function
+    def __init__(self):
+        #parent initialization function
         super().__init__()
-        self.current_path = current_path
+        #entering starting width and height of the app
         w_wind = 800 
-        h_wind = 650
-        max_w = 1000
-        max_h = 800
+        h_wind = 550
+        #if DPI Scaling is not enabled, scale the values:
         if not tools_mod.DPI_aware:
             w_wind/=1.5
             h_wind/=1.5
-            max_w/=1.5
-            max_h/=1.5
+        #print the width and the height of the screen
         w_scr = self.winfo_screenwidth()
         print(f"w_scr: {w_scr}")
         h_scr = self.winfo_screenheight()
         print(f"h_scr: {h_scr}")
+        #get coordinates for the window to be in the center
         x = (w_scr/2) - (w_wind/2)
         y = (h_scr/2) - (h_wind/2)
-        #self.maxsize(max_w, max_h)
+        #assign geometry and the position on the screen
         self.geometry('%dx%d+%d+%d' % (w_wind, h_wind, x, y))
+        #assign minimal height and minimal width for the window
         min_height = 450
+        #scale if DPI scaling isn't turned on
         if not tools_mod.DPI_aware:
             min_height = round(min_height/1.5)
         self.minsize(round(w_wind), min_height)
+        #set the title
         self.title("File Manager")
 
+#the upper menu of an app
 class AppMenu(tk.Menu):
+    #initialization function
     def __init__(self, master=None):
+        #call the parent initialization function
         super().__init__(master)
+        #set parent variable to master
         self.parent = master
+        #create a sub-menu (File submenu), turn off the tearoff
         self.filemenu = tk.Menu(self, tearoff = False)
+        #add cascade to main menu and assign the submenu
         self.add_cascade(label="    File    ", menu=self.filemenu)
+        #create a variable for checkbutton for DPI Scaling
         self.var = tk.IntVar(value = 0)
         if tools_mod.DPI_aware:
-            print("yey")
+            #in case DPI Scaling is on, turn it to 1
             self.var = tk.IntVar(value = 1)
-           
+        #add a checkbutton for DPI Scaling, assign custom command oncheck
         self.filemenu.add_checkbutton(label="DPI Scaling", variable=self.var, command=self.oncheck)
-            
-        print(tools_mod.DPI_aware)
+        #add a separator
         self.filemenu.add_separator()
+        #add an Exit command, which exits the application
         self.filemenu.add_command(label= "Exit", command=self.parent.quit)
 
+        #create a new sub-menu (Open sub-menu)
         self.openmenu = tk.Menu(self, tearoff=False)
+        #add the name and assing it to main menu
         self.add_cascade(label = "    Open    ", menu = self.openmenu)
-        self.openmenu.add_command(label="Open Path")
+        #create a command open path, which lets the user open the custom path
+        self.openmenu.add_command(label="Open Path", command= self.open_path)
     
+    #oncheck for checkbutton
     def oncheck(self):
+        #for console
         print("DPI Checked")
+        #show the info for the user
         messagebox.showinfo(title="Settings", \
             message="For the settings to change, you may restart the application")
+        #change DPI_aware variable to its opposite
         if tools_mod.DPI_aware:
             tools_mod.DPI_aware = False
         else:
             tools_mod.DPI_aware = True
 
+    #open path function
+    def open_path(self):
+        #for console
+        print("Opening Path")
+        #get our main frame
+        global working_screen
+        #call the goToPath popup class
+        goto_path = tools_mod.goToPath(working_screen)
 
 
 #function to return the image for the application
@@ -83,13 +114,12 @@ def get_app_icon(path):
     
 #* The main part of the program
 if __name__ == '__main__':
-    #create global variables, which resemble
-    # available drives, current folders and current files
+    #assign the global variable working_screen, as our main screen
+    global working_screen
     #set the path for application icon
     app_iconpath = 'icons/icons8-app-icon-240.png' 
     #set the start path of the application
     start_path = ""
-    
     #create the instance of application (class App)
     fm_app = App()
     #set the iconphoto by the function get_app_icon
@@ -128,14 +158,6 @@ if __name__ == '__main__':
     working_screen = ttk.Frame(canvas)
     #create a window of working screen inside the canvas
     canvas_frame = canvas.create_window((0, 0), window=working_screen, anchor='nw', tags= ["canv_frame"])
-     
-    # w_screen_pastePopup = tk.Menu(canvas, tearoff=False)
-    # w_screen_pastePopup.add_command(label = "Paste here", command=paste_here)
-
-    # def rclick_popup(event):
-    #     print("popup assigned!")
-    #     w_screen_pastePopup.tk_popup(event.x_root, event.y_root)
-    # canvas.bind("<Button-3>", rclick_popup)
 
     #function to control the width of the working screen
     def FrameWidth(event):
@@ -161,5 +183,7 @@ if __name__ == '__main__':
     tools_mod.drives, tools_mod.folders, tools_mod.files = tools_mod.fill_content(working_screen, start_path)
     #start the main loop of the app
     fm_app.mainloop()
+    #print the DPI state on exit
     print(f"DPI_aware on exit: {tools_mod.DPI_aware}")
+    #save DPI Scaling state
     tools_mod.save_settings(tools_mod.DPI_aware)
