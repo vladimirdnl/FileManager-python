@@ -1,3 +1,4 @@
+#importing libraries
 import tkinter as tk
 from tkinter import ttk, messagebox
 import os
@@ -7,219 +8,348 @@ from pathlib import Path
 import shutil
 from distutils.dir_util import copy_tree
 
-from httpx import delete
-
-#DPI aware setting
+#DPI aware setting variable
 DPI_aware = False
 
+#*global variables:
+#drives - available list of drives
+#folders - current list of folder instances
+#files - current list of file instances
+#curr_path - current path 
+#copy_buff - address of file to cut/copy
+#cut - controls whether to cut file or not
 global drives, folders, files, curr_path, copy_buff, cut
 cut = False
 curr_path = ""
 copy_buff = ""
 
+#create file\folder popup class
 class createInstance(tk.Toplevel):
+    #set standard path of the icon to "add folder" icon
     icon_path = 'icons/icons8-add-folder-80.png'
+    #initialize new_name variable
     new_name = ""
+    #initialize variable, which controls correctness of the name 
     is_correct=False
+    #intialization function
     def __init__(self, master=None, type="folder", master_type="frame", frame=None):
+        #call a parent class initialization function
         super().__init__(master)
+        #make global curr_path into the class
         global curr_path
+        #assign parent variable to master widget
         self.parent = master
+        #assign parent type to master type + assign frame
+        #? Why so -- in case the parent is canvas, the frame for update
+        #? is still provided to the class, we don't have to iterate 
+        #? through children
         self.parent_type = master_type
         self.frame=frame
+        #set type variable to type
         self.type = type
+        #if type of created instance is a file, correct the icon path of the popup
         if self.type == "file":
             self.icon_path = "icons/icons8-add-file-96.png"
         png = Image.open(self.icon_path)
         self.icon = ImageTk.PhotoImage(png)
+        #set the icon
+        self.tk.call('wm', 'iconphoto', self._w, self.icon)
+        #make only popup accessible for a user
         self.grab_set()
+        #create title according to the instance type
         if self.type == "folder":
             self.title("Create Folder")
         else:
             self.title("Create File")
-        self.tk.call('wm', 'iconphoto', self._w, self.icon)
+        #assign width and height of the popup
         w_popup = 400
         h_popup = 150
         #set padding on x axis
         padding_lr = [10,10]
         #set paddin on y axis
         padding_ud = [5,0]
+        #correct if scaling isn't enabled
         if not DPI_aware:
             w_popup /= 1.5
             h_popup /= 1.5
             padding_lr = [x / 1.5 for x in padding_lr]
             padding_ud = [x / 1.5 for x in padding_ud]
+        #get window screen width and height
         w_scr = self.winfo_screenwidth()
         h_scr = self.winfo_screenheight()
+        #get coordinates to place the popup in the center
         x = (w_scr/2) - (w_popup/2)
         y = (h_scr/2) - (h_popup/2)
+        #place the popup in the center
         self.geometry("%dx%d+%d+%d" % (w_popup, h_popup, x, y))
+        #make it unable to resize
         self.resizable(False, False)
+        #set columnconfigure with weights to make the popup
+        # grid fill the X axis of the popup 
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
+        #create a label widget with a call for the user to enter the name
+        # of the instance, which is being created
         self.label = ttk.Label(self, text = "Enter the Name:")
+        #place it in the top left corner with columnspan 2 + add padding
         self.label.grid(column=0, row=0, columnspan=2, sticky='ew',\
              padx=tuple(padding_lr), pady=tuple(padding_ud))
+        #create an entry widget to make it possible for the user
         self.entry = ttk.Entry(self)
+        #place it below the label, make it also take up the space of 2 columns
         self.entry.grid(column=0, row=1, columnspan=2, sticky = 'ew', \
             padx=tuple(padding_lr), pady= tuple(padding_ud))
+        #create an empty error message label, make the text red
         self.error_msg = ttk.Label(self, text= "", foreground="red")
+        #place it below the entry widget, make it centered
         self.error_msg.grid(column=0, row =2, columnspan=2)
+        #create OK button, which checks the written name and proceeds
         self.button_ok = ttk.Button(self, text="OK", command= self.check)
+        #place it to the left side, with 0 padding to the right
         self.button_ok.grid(column=0,row=3, sticky = 'ew', \
             padx=(padding_lr[0], 0), pady=tuple(padding_ud))
+        #create Cancel button, which destroys the popup
         self.button_cancel = ttk.Button(self, text="Cancel", command=self.destroy)
+        #place it to the right, beside the OK button, make the left padding 0
         self.button_cancel.grid(column=1,row=3, sticky = 'ew', \
             padx=(0, padding_lr[1]), pady=tuple(padding_ud))
+        #create a list of directrories to access and prevent entering existing names
         dir_list = Path(curr_path).iterdir()
         self.dir_list = [str(x) for x in dir_list]
 
+    #function to check instance name and create it
     def check(self):
+        #make curr_path enter the function
         global curr_path
+        #set is_correct to true ceforehand 
         self.is_correct = True
+        #enter the array of unallowed symbols
         unallowed_s = '/\:;"<>|*'
+        #get the instance name out of the entry
         name = self.entry.get()
+        #check for unallowed symbols
         for s in name:
             if s in unallowed_s:
+                #if there is one - set is_correct to false
                 self.is_correct = False
+                #and print the error message
                 self.error_msg.config(text = "Don't use: / \ : ; \" < > | *")
+                #break the cycle
                 break
+        #check for already existing instances with such name
         for ins_name in self.dir_list:
+            #for every instance in the current folder check its type
             ins_is_dir = Path(ins_name).is_dir()
+            #variable which is true when both (checked instance and created instance) are folders
             thesame_folder = self.type == "folder" and ins_is_dir
+            #variable which is true when both (checked instance and created instance) are files
             thesame_file = self.type == "file" and not ins_is_dir
+            #variable which is true when both the created instance and checked instance have the same type
             thesame = thesame_folder or thesame_file
+            #if they share the same name and the same type
             if ins_name.endswith(name) and thesame:
+                #set is_correct to false and print the correct message to the user
                 self.is_correct = False
                 if self.type == "folder":
                     self.error_msg.config(text = "Folder with such name already exists!")
                 if self.type == "file":
                     self.error_msg.config(text = "File with such name already exists!")
+                #break the cycle of checking
                 break
+        #lastly, if is_correct is stayed true, then create an instanse
         if self.is_correct:
+            #assign new_name to what we got from the entry widget 
             self.new_name = name
+            #create the instance according to its type
             if self.type == "folder":
                 os.mkdir(curr_path + "\\" + self.new_name)
             elif self.type == "file":
                 new_file = open(curr_path + '\\' + self.new_name, 'x')
                 new_file.close()
+            #destroy the popup
             self.destroy()
+            #if the parent is canvas, pass the frame which was given to update
             if self.parent_type == "canvas":
                 update_content(self.frame, curr_path, stay=True)
+            #else -- just pass the parent widget (which means frame)
             else:
                 update_content(self.parent, curr_path, stay=True)
 
+#class which resembles popup on sub-menu command "Open > Open Path"
 class goToPath(tk.Toplevel):
+    #set the icon path
     icon_path = "icons/icons8-folder-480.png"
+    #initialize the newpath variable
     new_path = ""
-    is_correct=False
+
+    #initialization function
     def __init__(self, master=None):
+        #call the parent class initialization function 
         super().__init__(master)
+        #make curr_path enter the function
         global curr_path
+        #assign parent variable to master widget
         self.parent = master
+        #set the image for a popup
         png = Image.open(self.icon_path)
         self.icon = ImageTk.PhotoImage(png)
-        self.grab_set()
-        self.title("Open Path")
         self.tk.call('wm', 'iconphoto', self._w, self.icon)
+        #make only the popup accessible to the user
+        self.grab_set()
+        #write the title of the popup 
+        self.title("Open Path")
+        #initialize width and height of the popup
         w_popup = 450
         h_popup = 150
         #set padding on x axis
         padding_lr = [10,10]
-        #set paddin on y axis
+        #set padding on y axis
         padding_ud = [5,0]
+        #change values according to scaling 
         if not DPI_aware:
             w_popup /= 1.5
             h_popup /= 1.5
             padding_lr = [x / 1.5 for x in padding_lr]
             padding_ud = [x / 1.5 for x in padding_ud]
+        #get scrren width and height
         w_scr = self.winfo_screenwidth()
         h_scr = self.winfo_screenheight()
+        #get coordinates to place the popup in the center
         x = (w_scr/2) - (w_popup/2)
         y = (h_scr/2) - (h_popup/2)
+        #place the popup
         self.geometry("%dx%d+%d+%d" % (w_popup, h_popup, x, y))
+        #disable resizing
         self.resizable(False, False)
+        #make grid columns as wide as the popup
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
+        #create a label widget with a call for the user to enter the name
+        # of the instance, which is being created
         self.label = ttk.Label(self, text = "Enter the Path:")
+        #place it in the top left corner with columnspan 2 + add padding
         self.label.grid(column=0, row=0, columnspan=2, sticky='ew',\
              padx=tuple(padding_lr), pady=tuple(padding_ud))
+        #create an entry widget to make it possible for the user
         self.entry = ttk.Entry(self)
+        #place it below the label, make it also take up the space of 2 columns
         self.entry.grid(column=0, row=1, columnspan=2, sticky = 'ew', \
             padx=tuple(padding_lr), pady= tuple(padding_ud))
+        #create an empty error message label, make the text red
         self.error_msg = ttk.Label(self, text= "", foreground="red")
+        #place it below the entry widget, make it centered
         self.error_msg.grid(column=0, row =2, columnspan=2)
+        #create OK button, which checks the written name and proceeds
         self.button_ok = ttk.Button(self, text="OK", command= self.check)
+        #place it to the left side, with 0 padding to the right
         self.button_ok.grid(column=0,row=3, sticky = 'ew', \
             padx=(padding_lr[0], 0), pady=tuple(padding_ud))
+        #create Cancel button, which destroys the popup
         self.button_cancel = ttk.Button(self, text="Cancel", command=self.destroy)
+        #place it to the right, beside the OK button, make the left padding 0
         self.button_cancel.grid(column=1,row=3, sticky = 'ew', \
             padx=(0, padding_lr[1]), pady=tuple(padding_ud))
-        dir_list = Path(curr_path).iterdir()
-        self.dir_list = [str(x) for x in dir_list]
-
+    
+    #to check the path
     def check(self):
+        #make curr_path enter the function
         global curr_path
-        self.is_correct = True
+        #get a path from the entry widget
         path = str(Path(self.entry.get()))
+        #if the path exists and it is not a file - update with the new path 
         if os.path.exists(path) and not Path(path).is_file():
             self.new_path = path
             update_content(self.parent, self.new_path)
         else:
+            #else - pring that the path is invalid
             self.error_msg.config(text="Not a valid path!")
+
+#class of the right click menu for current path
 class rclickMenu(tk.Menu):
+    #initialization function
     def __init__(self, master=None, master_type = "frame", frame=None):
+        #call the parent class initialization function
         super().__init__(master, tearoff=False)
+        #assign parent variable to master variable
         self.parent = master
+        #assign parent_type to master type and set frame, if the master is canvas
         self.parent_type = master_type
         self.frame = frame
+        #bind the parent to make menu visible on rclick
         self.parent.bind("<Button-3>", self.make_menu_visible)
+        #add command create a File
         self.add_command(label = "Create a File", command=self.create_file)
+        #add command create a Folder
         self.add_command(label = "Create a Folder", command=self.create_folder)
+        #add the separator
         self.add_separator()
+        #add command Paste here
         self.add_command(label = "Paste here", command=self.paste_here)
 
-
+    #command to paste files
     def paste_here(self):
+        #make the global variables into the function
         global copy_buff, curr_path, cut
+        #if the copy buffer isn't empty
         if copy_buff != "":
+            #and if the instance was COPIED
             if not cut:
+                #if copied instance is a directory
                 if Path(copy_buff).is_dir():
+                    #try pasting (create a new folder with such name and paste the inners)
                     try:
                         os.mkdir(curr_path + '\\' + str(Path(copy_buff).name))
                         copy_tree(copy_buff, curr_path + '\\' + str(Path(copy_buff).name))
+                        #reset copy buffer
                         copy_buff = ""
+                    #if such folder exists - sent the messagebox that copying folder failed
                     except FileExistsError:
                         messagebox.showinfo(title="Copying Directory", message="The directory with such name exists")
+                #if copied instance is not a directory, use shutil.copy2 to copy the file
                 else:
                     shutil.copy2(copy_buff, curr_path)
+                    #reset copy buffer
                     copy_buff = ""
+
+            #if the instance was CUT
             else:
+                #move the instance, reset cut variable and copy buffer
                 shutil.move(copy_buff, curr_path)
                 cut = False
                 copy_buff=""
-
+            #if the parent was a canvas -- pass the frame and update
             if self.parent_type == "canvas":
                 update_content(self.frame, curr_path, stay=True)
+            #otherwise, just pass the parent-frame
             else:
                 update_content(self.parent, curr_path, stay=True)
 
+    #function which makes menu visible
     def make_menu_visible(self, event):
         self.tk_popup(event.x_root, event.y_root)
 
+    #function which creates file
     def create_file(self):
+        #for console
         print("File is being created")
+        #if parent is canvas - create a createInstance class and pass the frame 
+        # + set type to file
         if self.parent_type == "canvas":
             cr_file = createInstance(self.parent, type = "file",\
                  master_type = "canvas", frame = self.frame)
+        #else - just create and pass the parent
         else:
             cr_file = createInstance(self.parent, type = "file")
     
     def create_folder(self):
+        #for console
         print("Folder is being created")
+        #if parent is canvas - create a createInstance class and pass the frame 
+        # + set type to folder
         if self.parent_type == "canvas":
             cr_file = createInstance(self.parent, type = "folder", \
                 master_type= "canvas", frame = self.frame)
+        #else - just create and pass the parent
         else:
             cr_file = createInstance(self.parent, type = "folder")
 
@@ -308,37 +438,55 @@ class RenamePopup(tk.Toplevel):
         dir_list = Path(self.old_name).parent.iterdir()
         self.dir_list = [str(x) for x in dir_list]
 
+    #checking the entered name
     def check(self):
+        #setting is_correct beforehand
         self.is_correct = True
+        #creating an array with prohibited symbols
         unallowed_s = '/\:;"<>|*'
+        #if the type is file, then add file's extension
         if self.type == "file":
             name = self.entry.get() + self.extension
+        #else - just get what was input in the entry widget
         else:
             name = self.entry.get()
+        #check for prohibited symbols
         for s in name:
+            #if there is one
             if s in unallowed_s:
+                #set is_correct to false
                 self.is_correct = False
+                #display the error message
                 self.error_msg.config(text = "Don't use: / \ : ; \" < > | *")
+                #break the cycle
                 break
+        #check the instance in the curr_path
         for ins_name in self.dir_list:
+            #get if the instance is a directory
             ins_is_dir = Path(ins_name).is_dir()
+            #variable which is true if the checked and renamed instances are both dirs
             thesame_folder = self.type == "folder" and ins_is_dir
+            #variable which is true if the checked and renamed instances are both file
             thesame_file = self.type == "file" and not ins_is_dir
+            ##variable which is true if the checked and renamed instances are the same type
             thesame = thesame_folder or thesame_file
+            #if the name and type are the same
             if ins_name.endswith(name) and thesame:
+                #set is_correct to false
                 self.is_correct = False
+                #display the error message according to the instance type
                 if self.type == "folder":
                     self.error_msg.config(text = "Folder with such name already exists!")
                 if self.type == "file":
                     self.error_msg.config(text = "File with such name already exists!")
                 break
+        #if the renamed name is correct
         if self.is_correct:
+            #set new_name to the entered name 
             self.new_name = name
-            if self.type == "folder":
-                os.rename(self.old_name, str(Path(self.old_name).parent)+ "\\" + self.new_name)
-            elif self.type == "file":
-                os.rename(self.old_name,str(Path(self.old_name).parent)+"\\"+self.new_name)
+            os.rename(self.old_name, str(Path(self.old_name).parent)+ "\\" + self.new_name)
             self.destroy()
+            #update the content of the path
             update_content(self.parent, str(Path(self.old_name).parent), stay=True)
 
 #class for button for folders
@@ -417,8 +565,10 @@ class FolderButton:
         #for console
         print(f"{self.abs_path} is being copied")
         #write address to global variable copy buffer
-        global copy_buff
+        # and set cut to false
+        global copy_buff, cut
         copy_buff = self.abs_path
+        cut = False
     
     #cut function
     def cut(self):

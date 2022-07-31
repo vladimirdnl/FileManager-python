@@ -94,6 +94,7 @@ class AppMenu(tk.Menu):
             tools_mod.DPI_aware = False
         else:
             tools_mod.DPI_aware = True
+        self.quit()
 
     #open path function
     def open_path(self):
