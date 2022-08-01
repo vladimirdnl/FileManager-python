@@ -35,8 +35,9 @@ A **simplistic, light-weight** File Manager along with its own UI and package in
 - `DPI Scaling`: turn on\off DPI Scaling ***(upper File menu)***
 
 ## Package installer
+- `File name`: **File Manager v1.0.0 setup(x64)**
 - `OS`: **Windows**
-- `System type`: **x64**
-- `file type`: **exe**
-- `size`: **19.1 MB**
+- `System type`: x64
+- `file type`: exe
+- `size`: 19.1 MB
 
